@@ -1,3 +1,87 @@
+# 0.按键检测
+
+基于正点原子开发板
+
+在main.h中添加定义
+
+```c++
+#define KEY0 HAL_GPIO_ReadPin(KEY0_GPIO_Port, KEY0_Pin) /* 读取 KEY0 引脚 */
+#define KEY1 HAL_GPIO_ReadPin(KEY1_GPIO_Port, KEY1_Pin) /* 读取 KEY1 引脚 */
+#define WK_UP HAL_GPIO_ReadPin(WK_UP_GPIO_Port, WK_UP_Pin) /* 读取 WKUP 引脚 */
+#define KEY0_PRES 1 /* KEY0 按下 */
+#define KEY1_PRES 2 /* KEY1 按下 */
+#define WKUP_PRES 3 /* KEY_UP 按下(即 WK_UP) */
+```
+
+在gpio.h中声明函数
+
+```c++
+uint8_t key_scan(uint8_t mode);
+```
+
+在gpio.c中
+
+```c++
+uint8_t key_scan(uint8_t mode)
+{
+ static uint8_t key_up = 1; /* 按键按松开标志 */
+uint8_t keyval = 0;
+ if (mode) key_up = 1; /* 支持连按 */
+ if (key_up && (KEY0 == 0 || KEY1 == 0 || WK_UP == 1))
+ { /* 按键松开标志为 1, 且有任意一个按键按下了 */
+ HAL_Delay(10); /* 去抖动 */
+ key_up = 0;
+ if (KEY0 == 0) keyval = KEY0_PRES;
+ if (KEY1 == 0) keyval = KEY1_PRES;
+ if (WK_UP == 1) keyval = WKUP_PRES;
+ }
+ else if (KEY0 == 1 && KEY1 == 1 && WK_UP == 0)
+ { /* 没有任何按键按下, 标记按键松开 */
+ key_up = 1;
+ }
+ return keyval; /* 返回键值 */
+}
+```
+
+在main.c中
+
+```c++
+uint8_t key;
+while (1)
+  {
+    /* USER CODE END WHILE */
+   //ch=getchar();
+   // HAL_UART_Transmit(&huart1,&ch,1,0);
+    /* USER CODE BEGIN 3 */
+      key = key_scan(0); /* 得到键值 */
+      printf("key=%d\n",key);
+ if (key)
+ {
+     printf("大只1测试\n");
+ switch (key)
+ {
+ case WKUP_PRES: 
+  ToggLED0(); /* BEEP 状态取反 */
+ break;
+ case KEY1_PRES: /* 控制 LED1(GREEN)翻转 */
+ ToggLED1(); /* LED1 状态取反 */
+ break;
+ case KEY0_PRES: /* 同时控制 LED0, LED1 翻转 */
+ ToggLED0(); /* LED0 状态取反 */
+ ToggLED1(); /* LED1 状态取反 */
+ break;
+ }
+ }
+ else
+ {
+ HAL_Delay(10);
+ }
+ }
+  
+  /* USER CODE END 3 */
+}
+```
+
 
 
 # 1.外部中断
@@ -84,6 +168,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
 在main.c函数中初始化定时器2
 
+关键语句：
+
 ```c++
   /* USER CODE BEGIN 2 */
     /*使能定时器1中断*/
@@ -159,6 +245,10 @@ uart(universal  asynchronous receiver transmitter) 通用异步收发器
 
 参考资料：[(61条消息) 【STM32】HAL库 STM32CubeMX教程四---UART串口通信详解_hal_uart_transmit_Z小旋的博客-CSDN博客](https://blog.csdn.net/as480133937/article/details/99073783?spm=1001.2014.3001.5502)
 
+
+
+理解串口中断资料参考：[STM32-HAL库串口DMA空闲中断的正确使用方式+解析SBUS信号_stm32 空闲中断_何为其然的博客-CSDN博客](https://blog.csdn.net/qq_30267617/article/details/131209656?ops_request_misc=%7B%22request%5Fid%22%3A%22169141237816800182190858%22%2C%22scm%22%3A%2220140713.130102334.pc%5Fall.%22%7D&request_id=169141237816800182190858&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~all~first_rank_ecpm_v1~rank_v31_ecpm-6-131209656-null-null.142^v92^controlT0_2&utm_term=航模串口接收 SBUS&spm=1018.2226.3001.4187)
+
 **通过本篇博客您将学到：**
 
 STM32CubeMX创建串口例程
@@ -207,7 +297,7 @@ HAL_UART_ErrorCallback();串口接收错误函数
 
 在usart.c中重写fputc和fgetc函数
 
-**在usart.h需要包含#include<stdio.h>**
+**在usart.h需要包含#include<stdio.h>   **
 
 ```c++
 int fputc(int ch, FILE *f)
@@ -245,7 +335,7 @@ int fgetc(FILE * f)
   /* USER CODE END 3 */
 ```
 
-
+![image-20230807213402855](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230807213402855.png)
 
 **UART接收中断**
 因为中断接收函数只能触发一次接收中断，所以我们需要在中断回调函数中再调用一次中断接收函数
@@ -255,7 +345,7 @@ int fgetc(FILE * f)
 
 2、在main中第一次调用接收中断函数
 
-3、进入接收中断，接收完数据  进入中断回调函数
+3、进入接收中断，接收完数据  进入中断回调函数，需要在IRQHandler函数中清除中断标志位（**USART_ClearITPendingBit(UART5,USART_IT_RXNE); //清除中断标志**）
 
 4、修改HAL_UART_RxCpltCallback中断回调函数，处理接收的数据，
 
@@ -327,6 +417,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 ```
 
 
+
+串口中断参考资料：[STM32CubeMX串口USART中断发送接收数据_cubemx串口中断接收_糖果罐子♡的博客-CSDN博客](https://blog.csdn.net/wuyiyu_/article/details/129238627?ops_request_misc=%7B%22request%5Fid%22%3A%22169140734716800211515217%22%2C%22scm%22%3A%2220140713.130102334.pc%5Fall.%22%7D&request_id=169140734716800211515217&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~all~first_rank_ecpm_v1~rank_v31_ecpm-2-129238627-null-null.142^v92^controlT0_2&utm_term=stm32cubemx 串口中断标志位、&spm=1018.2226.3001.4187)
+
+2.[STM32-HAL库串口DMA空闲中断的正确使用方式+解析SBUS信号_stm32 空闲中断_何为其然的博客-CSDN博客](https://blog.csdn.net/qq_30267617/article/details/131209656?ops_request_misc=%7B%22request%5Fid%22%3A%22169141237816800182190858%22%2C%22scm%22%3A%2220140713.130102334.pc%5Fall.%22%7D&request_id=169141237816800182190858&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~all~first_rank_ecpm_v1~rank_v31_ecpm-6-131209656-null-null.142^v92^controlT0_2&utm_term=航模串口接收 SBUS&spm=1018.2226.3001.4187)
 
 # 5.看门狗（独立看门狗，窗口看门狗）
 
@@ -879,7 +973,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)    //ADC转换完成回�
 
 
 
-# 10.DAC
+# DAC
 
 参考资料：[(62条消息) 【STM32】HAL库 STM32CubeMX教程十---DAC_Z小旋的博客-CSDN博客](https://blog.csdn.net/as480133937/article/details/102309242?spm=1001.2014.3001.5502)
 
@@ -891,6 +985,493 @@ STM32F1中有两个DAC,可以同时使用STM32的DAC模块是12位数字输入�
 
 DAC 有两个用途：**输出波形**和**输出固定电压**
 
+
+
+# 10.DMA（直接内存访问）
+
+参考资料：[(91条消息) 【STM32】HAL库 STM32CubeMX教程十一---DMA (串口DMA发送接收)_cubemx spi dma_Z小旋的博客-CSDN博客](https://blog.csdn.net/as480133937/article/details/104827639)
+
+## 10.1 DMA基本介绍
+
+### 1.DMA定义
+
+**DMA用来提供在外设和存储器之间或者存储器和存储器之间的高速数据传输。无须CPU的干预，通过DMA数据可以快速地移动。这就节省了CPU的资源来做其他操作。**
+
+![image-20230725191519127](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230725191519127.png)
+
+### 2.DMA传输方式
+
+- 外设到内存
+- 内存到外设
+- 内存到内存
+- 外设到外设
+
+
+
+### 3.DMA传输参数
+
+DMA所需要的4个核心参数
+**1 数据的源地址 2 数据传输位置的目标地址 ，3 传递数据多少的数据传输量 ，4 进行多少次传输的传输模式** 
+
+
+
+当用户将参数设置好，主要涉及**源地址、目标地址、传输数据量**这三个，DMA控制器就会启动数据传输，当剩余传输数据量为0时 达到传输终点，结束DMA传输 ，当然，**DMA 还有循环传输模式** 当到达传输终点时会重新启动DMA传输。
+
+
+
+![image-20230726142824146](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230726142824146.png)
+
+### 4.DMA的主要特征
+
+每个通道都直接连接专用的硬件DMA请求，每个通道都同样支持软件触发。这些功能通过软件来配置；
+
+- 在同一个DMA模块上，多个请求间的优先权可以通过软件编程设置（共有四级：很高、高、中等和低），优先权设置相等时由硬件决定（请求0优先于请求1，依此类推）；
+- 独立数据源和目标数据区的传输宽度（字节、半字、全字），模拟打包和拆包的过程。源和目标地址必须按数据传输宽度对齐；
+- 支持循环的缓冲器管理；
+- 每个通道都有3个事件标志（DMA半传输、DMA传输完成和DMA传输出错），**这3个事件标志逻辑或成为一个单独的中断请求；**
+- 存储器和存储器间的传输、外设和存储器、存储器和外设之间的传输；
+- 闪存、SRAM、外设的SRAM、APB1、APB2和AHB外设均可作为访问的源和目标；
+- 可编程的数据传输数目：最大为65535。
+
+
+
+对于大容量的STM32芯片有**2个DMA控制器** 两个DMA控制器，DMA1有7个通道，DMA2有5个通道。每个通道都可以配置一些外设的地址。
+
+
+
+### 5.DMA工作过程
+
+首先通过对比有与没有DMA的情况下，ADC采集的数据如何放到SRAM
+
+**没有DMA**
+
+如果没有DMA，CPU传输数据还要以内核作为中转站具体过程如下：
+
+**内核通过DCode经过总线矩阵协调，从获取AHB存储的外设ADC采集的数据，然后内核再通过DCode经过总线矩阵协调把数据存放到内存SRAM中。**
+
+![image-20230726145014946](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230726145014946.png)
+
+
+
+**有DMA**
+
+- **DMA传输时外设对DMA控制器发出请求。**
+- **DMA控制器收到请求，触发DMA工作。**
+- **DMA控制器从AHB外设获取ADC采集的数据，存储到DMA通道中**
+- **DMA控制器的DMA总线与总线矩阵协调，使用AHB把外设ADC采集的数据经由DMA通道存放到SRAM中，这个数据的传输过程中，完全不需要内核的参与，也就是不需要CPU的参与**
+
+<img src="C:/Users/su/AppData/Roaming/Typora/typora-user-images/image-20230726150823919.png" alt="image-20230726150823919" style="zoom:50%;" />
+
+在发生一个事件后，外设向DMA控制器发送一个**请求信号**。DMA控制器根据通道的优先权处理请求。当DMA控制器开始访问发出请求的外设时，DMA控制器立即发送给它一个应答信号。当从DMA控制器得到**应答信号**时，外设立即释放它的请求。一旦外设释放了这个请求，DMA控制器同时撤销应答信号。DMA传输结束，如果有更多的请求时，外设可以启动下一个周期。
+
+
+### 6.DMA的传输方式
+
+方法1：**DMA_Mode_Normal**，**正常模式，**
+
+当一次DMA数据传输完后，停止DMA传送 ，也就是只传输一次
+　　
+方法2：**DMA_Mode_Circular** ，**循环传输模式**
+
+当传输结束时，硬件自动会将传输数据量寄存器进行重装，进行下一轮的数据传输。 也就是多次传输模式
+
+
+
+### 7.存储器到存储器模式
+
+**DMA通道的操作可以在没有外设请求的情况下进行，这种操作就是存储器到存储器模式。**
+
+**存储器到存储器模式不能与循环模式同时使用**
+
+
+
+### 8.DMA中断
+
+每个DMA通道都可以在DMA传输过半、传输完成和传输错误时产生中断。为应用的灵活性考虑，通过设置寄存器的不同位来打开这些中断。
+
+![image-20230726154020057](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230726154020057.png)
+
+使没开启，我们也可以通过查询这些位来获得当前 DMA 传输的状态。这里我们常用的是 TCIFx位，即数据流 x 的 DMA 传输完成与否标志。
+
+
+
+**DMA库函数配置过程：**
+
+**1、使能DMA时钟：RCC_AHBPeriphClockCmd();**
+
+**2、初始化DMA通道：DMA_Init();**
+
+**//设置通道；传输地址；传输方向；传输数据的数目；传输数据宽度；传输模式；优先级；是否开启存储器到存储器。**
+
+**3、使能外设DMA；**
+
+**4、使能DMA通道传输；**
+
+**5、查询DMA传输状态。**
+
+
+
+CubeMx 如何创建DMA
+
+具体流程如下：
+
+<img src="https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230726154620569.png" alt="image-20230726154620569" style="zoom:50%;" />
+
+
+
+
+
+## 10.2 DMA的常用API
+
+### 1.串口发送/接收函数
+
+- **HAL_UART_Transmit()**;串口发送数据，使用超时管理机制
+- **HAL_UART_Receive()**;串口接收数据，使用超时管理机制
+- **HAL_UART_Transmit_IT()**;串口中断模式发送
+- **HAL_UART_Receive_IT()**;串口中断模式接收
+- **HAL_UART_Transmit_DMA()**;串口DMA模式发送
+- **HAL_UART_Transmit_DMA()**;串口DMA模式接收
+- **HAL_UART_DMAPause()** 暂停串口DMA
+- **HAL_UART_DMAResume()**; 恢复串口DMA
+- **HAL_UART_DMAStop()**; 结束串口DMA
+
+
+
+**串口DMA发送数据**：
+
+```c++
+ HAL_UART_Transmit_DMA(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size)
+```
+
+功能：串口通过DMA发送指定长度的数据。
+
+参数：
+
+- UART_HandleTypeDef *huart UATR的别名 如 : UART_HandleTypeDef huart1; 别名就是huart1
+- *pData 需要存放接收数据的数组
+- Size 接受的字节数
+
+举例：
+
+```c++
+HAL_UART_Transmit_DMA(&huart1, (uint8_t *)Recbuff, sizeof(Recbuff));  //串口发送Senbuff数组
+```
+
+
+
+**串口DMA恢复函数**
+
+```c++
+HAL_UART_DMAResume(&huart1)
+```
+
+**作用**： 恢复DMA的传输
+
+**返回值**： 0 正在恢复 1 完成DMA恢复
+
+
+
+## 10.3 串口IDLE接收空闲中断+DMA
+
+参考资料：[(94条消息) STM32 HAL CubeMX 串口IDLE接收空闲中断+DMA___hal_dma_get_counter_Z小旋的博客-CSDN博客](https://blog.csdn.net/as480133937/article/details/105013368)
+
+### **1.STM32 IDLE 接收空闲中断**
+
+在使用串口接受字符串时，可以使用空闲中断**（IDLEIE置1，即可使能空闲中断）**，这样在接收完一个字符串，进入空闲状态时（IDLE置1）便会激发一个空闲中断。在中断处理函数，我们可以解析这个字符串。
+
+**接受完一帧数据，触发中断**
+
+
+
+**STM32的IDLE的中断产生条件**：
+
+在串口无数据接收的情况下，不会产生，当清除IDLE标志位后，必须有接收到第一个数据后，才开始触发，一但接收的数据断流，没有接收到数据，即产生IDLE中断.
+
+
+
+### 2.**STM32 RXNE接收数据中断**
+
+**功能：**
+当串口接收到一个bit的数据时，(读取到一个停止位) 便会触发 RXNE接收数据中断
+
+**接受到一个字节的数据，触发中断**
+
+**比如给上位机给单片机一次性发送了8个字节，就会产生8次RXNE中断，1次IDLE中断。**
+
+
+
+### 3.相关寄存器
+
+**串口CR1寄存器**
+
+![image-20230727094310036](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230727094310036.png)
+
+**对bit4写1开启IDLE接受空闲中断,对bit5写1开启RXNE接收数据中断。**
+
+
+
+**串口ISR寄存器**
+
+![image-20230727094404701](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230727094404701.png)
+
+**此寄存器为串口状态查询寄存器**
+
+当串口接收到数据时，bit5 RXNE就会自动变成1，当接收完一帧数据后，bit4就会变成1.
+
+
+
+### 重点：
+
+**1.清除RXNE中断标志位**的方法为：
+
+**只要把接收到的一个字节读出来，就会清除这个中断**
+
+
+
+2.在STM32F1 /STM32F4 系列中 **清除IDLE中断标志位**的方法为：
+
+1. **先读SR寄存器，**
+2. **再读DR寄存器。**
+
+
+
+### 4.相关API
+
+**memset()函数**
+
+```c++
+extern void *memset(void *buffer, int c, int count)        
+```
+
+该函数用于将指定内存区域的内容设置为特定的值
+
+- buffer：为指针或是数组
+- c：是赋给buffer的值
+- count：是buffer的长度.
+
+**USART采用DMA接收时，如何读取当前接收字节数？**
+
+```c++
+   #define __HAL_DMA_GET_COUNTER(__HANDLE__) ((__HANDLE__)->Instance->CNDTR);
+```
+
+**DMA接收时该宏将返回当前接收空间剩余字节**
+
+**实际接受的字节= 预先定义的接收总字节 - __HAL_DMA_GET_COUNTER()**
+
+
+
+其本质就是读取NTDR寄存器，DMA通道结构体中定义了NDTR寄存器，读取该寄存器即可得到未传输的数据数呢
+
+
+
+### 5.实现方法
+
+两种利用串口IDLE空闲中断的方式接收一帧数据，方法如下:
+
+**方法1：实现思路：**
+
+**1.采用STM32F103的串口1，并配置成空闲中断IDLE模式且使能DMA接收，并同时设置接收缓冲区和初始化DMA。**
+
+2.那么初始化完成之后，当外部给单片机发送数据的时候，假设这次接受的数据长度是200个字节，那么在单片机接收到一个字节的时候并不会产生串口中断，而是DMA在后台把数据默默地搬运到你指定的缓冲区数组里面。**当整帧数据发送完毕之后串口才会产生一次中断，此时可以利用__HAL_DMA_GET_COUNTER(&hdma_usart1_rx);函数计算出当前DMA接收存储空间剩余字节**
+
+**3.本次的数据接受长度=预先定义的接收总字节-接收存储空间剩余字节**
+
+**方法2：实现思路：**
+
+**直接利用stm32的RXNE和IDLE中断进行接收不定字节数据。** 每次接收到一个字节的数据，触发RXNE中断 将该字节数据存放到数组里，传输完成之后，触发一次IDLE中断，对已经获取到的数据进行处理
+
+
+
+
+
+### 6.例程
+
+**例程1**
+
+使用DMA+串口接受空闲中断 **实现将接收的数据完整发送到上位机的功能**
+
+<img src="https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230727104745952.png" alt="image-20230727104745952" style="zoom:50%;" />
+
+**接收数据的流程：**
+
+首先在初始化的时候**打开DMA接收**，**使能IDLE中断**
+
+void MX_USART1_UART_Init(void)
+
+```c++
+__HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE); //使能IDLE中断
+```
+
+当MCU通过USART接收外部发来的数据时，在进行第①②③步的时候，DMA直接将接收到的数据写入缓存rx_buffer[100] //接收数据缓存数组，程序此时也不会进入接收中断，在软件上无需做任何事情，要在初始化配置的时候设置好配置就可以了。
+
+
+
+**数据接收完成的流程：**
+
+**当数据接收完成之后产生接收空闲中断**④,（就是说只有在发送的数据完成后，才会产生空闲中断）在中断服务函数中做这几件事：
+
+- **判断是否为IDLE接受空闲中断**
+- **在中断服务函数中将接收完成标志位置1**
+- **关闭DMA防止在处理数据时候接收数据，产生干扰。**
+- **计算出接收缓存中的数据长度，清除中断位，**
+
+```c++
+void USART1_IRQHandler(void)
+{
+  /* USER CODE BEGIN USART1_IRQn 0 */
+  	uint32_t tmp_flag = 0;
+	uint32_t temp;
+	tmp_flag =__HAL_UART_GET_FLAG(&huart1,UART_FLAG_IDLE); //获取IDLE标志位
+	if((tmp_flag != RESET))//idle标志被置位,判断是否为IDLE接受空闲中断
+	{ 
+		__HAL_UART_CLEAR_IDLEFLAG(&huart1);//清除标志位
+		//temp = huart1.Instance->SR;  //清除状态寄存器SR,读取SR寄存器可以实现清除SR寄存器的功能
+		//temp = huart1.Instance->DR; //读取数据寄存器中的数据
+		//这两句和上面那句等效
+		HAL_UART_DMAStop(&huart1); //关闭DMA防止在处理数据时候接收数据，产生干扰。
+		temp  =  __HAL_DMA_GET_COUNTER(&hdma_usart1_rx);// 获取DMA中未传输的数据个数   
+		//temp  = hdma_usart1_rx.Instance->NDTR;//读取NDTR寄存器 获取DMA中未传输的数据个数，
+		//这句和上面那句等效
+		rx_len =  BUFFER_SIZE - temp; //总计数减去未传输的数据个数，得到已经接收的数据个数
+		recv_end_flag = 1;	// 接受完成标志位置1	
+	 }
+
+  /* USER CODE END USART1_IRQn 0 */
+  HAL_UART_IRQHandler(&huart1);
+  /* USER CODE BEGIN USART1_IRQn 1 */
+
+  /* USER CODE END USART1_IRQn 1 */
+}
+```
+
+1. 先读SR寄存器,再读DR寄存器.能够实现清除IDLE中断标志位
+
+   
+
+**while循环 主程序流程：**
+
+- **主程序中检测到接收完成标志被置1**
+
+- **进入数据处理程序，现将接收完成标志位置0，**
+
+- **将接收到的数据重新发送到上位机**
+
+- **重新设置DMA下次要接收的数据字节数，使能DMA进入接收数据状态。**
+
+- ```c++
+   while (1)
+    {
+      /* USER CODE END WHILE */
+  if(recv_end_flag == 1)  //接收完成标志
+  		{
+  			
+  			
+  			DMA_Usart_Send(rx_buffer, rx_len);//把接收到的数据通过DMA写入内存
+  			rx_len = 0;//清除计数
+  			recv_end_flag = 0;//清除接收结束标志位
+  //			for(uint8_t i=0;i<rx_len;i++)
+  //				{
+  //					rx_buffer[i]=0;//清接收缓存
+  //				}
+  				memset(rx_buffer,0,rx_len);//清空rx_buffer
+    }
+  		HAL_UART_Receive_DMA(&huart1,rx_buffer,BUFFER_SIZE);//重新打开DMA接收
+  
+      /* USER CODE BEGIN 3 */
+    }
+    /* USER CODE END 3 */
+  
+  ```
+
+DMA方式对于我们来说其实挺重要的，现在可能还看不出来，因为我们现在的程序都只是完成一个功能，没有其他并行的程序，三种方式看不出有什么直观的区别。但是当我们要处理的程序多了以后，就会考虑CPU的处理能力的问题，CPU如果同时需要处理的程序很多负担就会很大，程序就很容易跑飞。
+
+例程2：
+
+参考：[(94条消息) STM32 HAL CubeMX 串口IDLE接收空闲中断+DMA___hal_dma_get_counter_Z小旋的博客-CSDN博客](https://blog.csdn.net/as480133937/article/details/105013368)
+
+
+
+
+
+## 10.4 DMA基本实验
+
+参考实验：4.3 DMA_test
+
+参考资料：[STM32 HAL库 STM32CubeMX -- DMA（直接存储区访问）_Dir_xr的博客-CSDN博客](https://blog.csdn.net/Dir_x/article/details/128961012?ops_request_misc=&request_id=&biz_id=102&utm_term=stm32cubemx DMA&utm_medium=distribute.pc_search_result.none-task-blog-2~all~sobaiduweb~default-1-128961012.142^v92^controlT0_2&spm=1018.2226.3001.4187)
+
+**函数介绍**
+
+**串口DMA发送函数**
+
+```c++
+ HAL_UART_Transmit_DMA(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size)
+```
+
+**功能：** 串口通过DMA发送指定长度的数据。
+
+**参数：**
+
+UART_HandleTypeDef *huart UATR的别名 如 : UART_HandleTypeDef huart1; 别名就是huart1
+***pData：** 需要发送的数据
+**Size ：** 发送的字节数
+
+举例：
+
+```c++
+示例：HAL_UART_Transmit_DMA(&huart1, tx_buf, sizeof(tx_buf));  //串口发送tx_buf数组
+```
+
+
+
+**串口DMA接收数据**
+
+```c++
+HAL_UART_Receive_DMA(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size)
+```
+
+**功能：** 串口通过DMA接受指定长度的数据。
+
+举例
+
+```c++
+示例：HAL_UART_Transmit_DMA(&huart1, rx_buf, sizeof(rx_buf));  //串口发送rx_buf数组
+```
+
+
+
+参考代码：
+
+```c++
+	/* Private define ------------------------------------------------------------*/
+	/* USER CODE BEGIN PD */
+		uint8_t tx_buf[] = "hello lu shi jun \r\n ";
+		uint8_t rx_buf[4];
+	/* USER CODE END PD */
+
+	  /* USER CODE BEGIN 2 */
+		HAL_UART_Receive_DMA(&huart1,rx_buf,sizeof(rx_buf));	//打开DMA接收
+	  /* USER CODE END 2 */
+
+
+/* USER CODE BEGIN 4 */
+
+
+/* 串口DMA收到数据回调函数 */
+/* UART一旦开启DMA之后，DMA收发中断强制开启，DMA收发函数直接可以编写回调函数 */
+/* 当串口接收到数据以后，发送一段特定的数据 */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+	{
+    if(huart->Instance == USART1)		//判断串口号
+    {
+      HAL_UART_Transmit_DMA(&huart1,tx_buf,sizeof(tx_buf));		//发送数据  
+    //HAL_UART_Receive_DMA(&huart1,rx_buf,sizeof(rx_buf));	//打开DMA接收
+    }
+
+	}
+/* USER CODE END 4 */
+
+```
 
 
 
@@ -1049,6 +1630,8 @@ void Single_WriteI2C(uint8_t REG_Address,uint8_t REG_data)
 ```
 
 **在传输过程，寄存器地址和源数据地址是会自加的。**
+
+
 
 至于读函数也是如此，因此用HAL_I2C_Mem_Write和HAL_I2C_Mem_Read，来写读指定设备的指定寄存器数据是十分方便的，让设计过程省了好多步骤。
 
@@ -1412,3 +1995,1471 @@ HAL_StatusTypeDef  HAL_SPI_Receive(SPI_HandleTypeDef *hspi, uint8_t *pData, uint
 参考资料：[(70条消息) 最新CubeMX配置CAN通讯教程，避免踩坑，附全套工程文件_cubemx can_皮皮爹地的博客-CSDN博客](https://blog.csdn.net/prolop87/article/details/122671441?spm=1001.2101.3001.6661.1&utm_medium=distribute.pc_relevant_t0.none-task-blog-2~default~CTRLIST~Rate-1-122671441-blog-126662080.235^v38^pc_relevant_sort_base3&depth_1-utm_source=distribute.pc_relevant_t0.none-task-blog-2~default~CTRLIST~Rate-1-122671441-blog-126662080.235^v38^pc_relevant_sort_base3&utm_relevant_index=1)
 
 [(70条消息) CAN总线学习笔记 | STM32CubeMX配置CAN环回测试_can 回环测试_安迪西嵌入式的博客-CSDN博客](https://blog.csdn.net/Chuangke_Andy/article/details/127770680?ops_request_misc=&request_id=&biz_id=102&utm_term=stm32cubemx can通信&utm_medium=distribute.pc_search_result.none-task-blog-2~all~sobaiduweb~default-5-127770680.142^v88^insert_down1,239^v2^insert_chatgpt&spm=1018.2226.3001.4187)
+
+
+
+
+
+# 14.CanOpen通信
+
+参考资料：https://zhuanlan.zhihu.com/p/490465815
+
+[(80条消息) CANOPEN详解_行思坐忆，志凌云的博客-CSDN博客](https://blog.csdn.net/qq_38025219/article/details/105912586?ops_request_misc=%7B%22request%5Fid%22%3A%22168964707416800215060117%22%2C%22scm%22%3A%2220140713.130102334..%22%7D&request_id=168964707416800215060117&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~all~sobaiduend~default-1-105912586-null-null.142^v88^insert_down1,239^v2^insert_chatgpt&utm_term=canopen详解&spm=1018.2226.3001.4187)
+
+[(80条消息) CAN Open基础知识_canopen_搬砖的MATTI的博客-CSDN博客](https://blog.csdn.net/SHYHOOD/article/details/117445606?ops_request_misc=%7B%22request%5Fid%22%3A%22168964241216800188526541%22%2C%22scm%22%3A%2220140713.130102334..%22%7D&request_id=168964241216800188526541&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~all~top_positive~default-1-117445606-null-null.142^v88^insert_down1,239^v2^insert_chatgpt&utm_term=canopen&spm=1018.2226.3001.4187)
+
+
+
+## 14.1 什么是CANopen?
+
+​         CANopen是一种基于CAN的[通信协议](https://so.csdn.net/so/search?q=通信协议&spm=1001.2101.3001.7020)。这项协议非常有用，因为它可以让设备、节点（如工业机械）之间具有现成的互操作性，以及它提供了安装前和安装后配置设备的标准方法。CANopen最初是为面向运动的机器控制系统设计的。    
+
+相较于CAN总线和J1939协议，CANopen协议新增了**6个核心概念**：
+
+- **通信模式**。设备/节点的通信有3种模式： 主/从站、客户端/服务器和生产者/消费者。
+- **通信协议**。用于通信的协议，如配置节点（SDO）或传输实时数据（PDO）等。
+- **设备状态**。一个设备支持不同的状态，一个 "主站 "节点可以改变一个 "从站 "节点，包括重置等操作。
+- **对象字典**。每个设备都有一个OD，其中有指定设备配置等的条目，它可以通过SDO访问。
+- **电子数据表**。EDS是OD条目的标准文件格式，它允许使用服务工具来更新设备。
+- **设备设置文件**。描述了I/O模块（CiA 401）和运动控制（CiA 402）等供应商独立性
+
+
+
+**三种模式：**
+
+**第一， 主/从站**。 一个节点（例如控制接口）作为应用主站或主控制器。它向从站设备（例如伺服电机）请求数据。这个过程被用于诊断或状态管理。在标准应用中，可以有0到127个从站。但需要注意，请注意：在单个CANopen网络中，可以有不同的主机控制器共享同一个数据链路层。
+
+**第二， 客户端/服务器**。 客户端向服务器发送数据请求，服务器回复请求的数据。例如，当应用程序主站需要从站的OD中获取数据时使用这一模式。从服务器上读取是一种 “上传”，而“写入”是一种 “下载”（该术语采用服务器端的角度）。
+
+**第三， 消费者/生产者**。 该模式中生产者节点向网络广播数据，由消费者节点消费。生产者根据请求（拉模型）或没有特定请求（推模型）发送此数据。（PDO）
+
+
+
+## 14.2 CANopen功能描述 
+
+**（1）报文分类**
+
+![image-20230718171918274](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718171918274.png)
+
+**（2）对象字典**
+
+  对象字典（OD：Object Dictionary）是CANopen的**核心概念**，网络中的每一个 CANopen设备都有一个对象字典。对象字典是一组有序的数据对象的集合，**这些对象描述了该设备的所有通讯和设备参数**，并且通过**16位的索引（index）和8位的子索引（subindex）**来确定其在对象字典中的位置。
+
+
+
+## 14.3 SDO(服务数据对象）报文说明
+
+**SDO 主要用于CANopen主站对从节点的参数配置**。服务确认是SDO的最大的特点，为每个消息都生成一个应答，确保数据传输的准确性。通常CANopen从节点作为SDO服务器，CANopen主节点作为客户端（称为 CS 通讯）。SDO 客户端通过索引和子索引，能够访问SDO服务器上的对象字典.
+
+![image-20230718192639042](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718192639042.png)
+
+![image-20230718192655832](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718192655832.png)
+
+![image-20230718192750484](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718192750484.png)
+
+​                                                                                                 **Master(主)  slave(从)**
+
+![image-20230718192810719](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718192810719.png)
+
+## 14.4 NMT（网络管理）报文说明
+
+**什么是NMT？**
+
+​          CANopen网络为了稳定可靠可控，都需要置一个**网络管理主机NMT-Master（Network Management-Master）**。所以每个 CANopen 从节点的 CANopen 协议栈中，必须具备 NMT 管理的相应代码，这是节点具备 CANopen 协议的最基本的要素。
+
+​         **NMT主机**一般是CANopen网络中具备监控的PLC或者PC（**当然也可以是一般的功能节点**），所以也成为CANopen主站。相对应的其他CANopen节点就是NMT从机(NMT-slaves)。
+
+NMT主机和NMT从机之间**通讯的报文就称为NMT网络管理报文**。管理报文负责层管理、网络管理和 ID 分配服务。例如，初始化、配置和网络管理（其中包括节点保护）。网络管理中，**同一个网络中只允许有一个主节点、一个或多个从节点，并遵循主从模式**。
+
+
+**（1）NMT节点状态**
+
+![image-20230718193340160](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718193340160.png)
+
+**（2）NMT从站节点上线报文**
+
+​         任何一个NMT从站节点上线后，为了提示主站它已加入网络，这个从站必须发送节点上线报文，如下表：
+
+![image-20230718193722243](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718193722243.png)
+
+**（3）NMT从站节点状态与心跳报文**
+
+​        为了监控CANopen节点是否在线与目前的节点状态。CANopen 应用中通常都**要求在线上电的从站定时发送心跳报文**，以便于主站确认从站是否故障、是否脱离网络。
+
+​       心跳报文格式如下表：
+
+​                                   ![image-20230718194636143](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718194636143.png)
+
+CANopen从站按其对象字典中1017h中填写的心跳生产时间（ms）进行心跳报文的发送，而CANopen主站（NMT 主站）则会按其1016h中填写的心跳消费时间进行检查，**假设超过若干次心跳消费时间没有收到从站的心跳报文，则认为从站已经离线或者损坏。**
+
+
+
+**（4）NMT节点状态切换命令**
+
+​         NMT网络管理中，最核心的就是NMT节点状态切换命令，这是NMT主站所进行网络管理的
+
+“命令”报文。 使用者必须牢记这些命令。
+
+​        COB-ID均为 0x000，具备最高的CAN优先级，**数据为2个字节**：
+
+![image-20230718200702735](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718200702735.png)
+
+如果要对整个网络所有节点进行控制，**则数据2的节点地址为0x00即可**
+
+**（5）NMT心跳报文配置例程**
+
+![image-20230718200942134](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718200942134.png)
+
+**1000的16进制是03E8h,对象字典中1017h,2B是M->S进行设置**
+
+在 CAN（Controller Area Network）通信协议中，数据发送的顺序**是从低位开始发送**
+
+
+
+## 14.5 PDO（过程数据对象）报文说明
+
+PDO属于过程数据，用来传输实时数据，即单向传输，无需接收节点回应CAN报文来确认，从通讯术语上来说是属于“生产消费”模型。
+
+在PDO预定义中，人为规定了TPDO和RPDO，规定了Node-ID在PDO中的位置，规定了 PDO 的编号。PDO分为TPDO（发送PDO）和(接收RPDO)，发送和接收是以CANopen节点自身为参考（如果CAN主站或者其他从站就相反）。 **TPDO和RPDO分别有4个数据对象，每种数据对象就是1条CAN报文封装，这些都是数据收发的容器。**
+
+**（1）PDO的COB-ID定义**
+
+T（transmit)   R(receive)
+
+![image-20230718201835098](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718201835098.png)
+
+**(2)PDO的传输形式**
+
+![image-20230718202033832](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718202033832.png)
+
+**（3）PDO通信参数**
+
+PDO通信参数，定义了该设备所使用的COB-ID、传输类型、定时周期等。RPDO通讯参数位于对象字典索引的0x1400至0x15FF，TPDO通讯参数位于对象字典索引的0x1800至0x19FF。每条索引代表一个PDO的通信参数集，其中的子索引分别指向具体的各种参数。如下表所示：
+
+![image-20230718202923250](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718202923250.png)
+
+**子索引个数**：即本索引下子索引个数；
+
+**COB-ID**:即这个PDO发送或接收时对应的CAN帧ID；
+
+**发送类型**：本产品目前仅支持两种PDO触发方式；
+
+**生产禁止约束时间**：约束 PDO发送的最小间隔，避免导致总线负载剧烈增加；
+
+**定时器触发时间**：此参数定义PDO传输形式定时器触发方式的时间。
+
+
+
+**（4）PDO的映射参数**
+
+​                                             ![image-20230718203206758](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718203206758.png)
+
+PDO映射个数：当前索引下映射的对象个数，是子索引1/2/3/4下已映射的总和；
+
+PDO1/2/3/4：填入待映射的对象字典的信息，如索引，子索引，数据类型；
+
+
+
+**(5) PDO配置例程**
+
+配置母线电压（0x2048）改变时上传
+
+![image-20230718203531565](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718203531565.png)
+
+**（6）保存PDO映射**
+
+![image-20230718203613866](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718203613866.png)
+
+
+
+## 14.6 CiA402说明
+
+​        CiA402协议中定义了运动控制设备的标准状态机，同时还定义了各种运行模式，以及它们在对象字典中的定义。
+
+​        标准状态机（State machine）描述了设备的状态和驱动可能的控制序列。每一步状态表示了一个特定的内部或者外部行为，设备的状态也决定了哪些命令可以被接收。
+
+![image-20230718204723113](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718204723113.png)
+
+- 状态机各状态对应说明如下表：
+
+![image-20230718204751500](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718204751500.png)
+
+![image-20230718204805300](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718204805300.png)
+
+驱动器状态机通过控制字（对象 6040h）的bit0~bit3、 bit7位来控制，具体描述如下表：
+
+![image-20230718205030876](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718205030876.png)
+
+状态机中各个状态可以通过状态字（对象6041h）的 bit0~bit3、bit5、bit6 显示，具体描述如下表：
+
+![image-20230718205100779](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718205100779.png)
+
+（2）控制字与状态字
+
+​        **驱动器的启停控制指令和状态描述主要通过控制字6040h与状态字6041h 实现，因此对控制字和状态字的熟练使用十分必要，下表简要描述了控制字和状态字各位的定义。**
+
+![image-20230718205336074](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718205336074.png)
+
+实例： 上电后对驱动器初始化操作，初始化后进入正常工作状态，该操作一般在上电后进行。
+
+![image-20230718210146411](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718210146411.png)
+
+CANopen通过**对象 6060h（Mode of Operation）**对驱动器工作模式进行设置，并通过对象**6061h（Mode of operation display）**反映驱动器当前的工作模式状态。 ZLAC8015系列驱动器目前支持 3 种工作模式：**位置模式**（Profile Position Mode），**速度模式**（Profile Velocity Mode），**转矩模式**（Profile Torque Mode）。
+
+![image-20230718210310572](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718210310572.png)
+
+## 14.7 位置模式
+
+**（1）位置模式说明**
+
+位置模式采用**S形加减速曲线**实现，用户可以通过**总线设置起始速度（地址200800h）**、**最大速度（地址 608100h）**、**加速时间（地址 608300h）**、**减速时间（地址 608400h）** 和**总脉冲数（地址 607A00h）**几个参数来实现精确的位置控制。S形加减速曲线如下图所示。
+
+![image-20230718210747277](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718210747277.png)
+
+**当用户设定的总脉冲数个数较少时，电机可能在加速到最大速度之前就需要进行减速（即电机实际运行过程中未加速到用户设定的最大速度）**，速度曲线如下图所示。图中实线所示为电机实际运行曲线，虚线为要加速到设定最大速度需要运行的曲线。理论总脉冲数为按照用户设定参数（起始速度、最大速度、加速时间、减速时间）计算得到的最小总脉冲数。当用户设定的总脉冲数小于理论总脉冲数时，电机就会按下图中实线运行。
+
+![image-20230718210902748](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718210902748.png)
+
+- **相关对象字典内容**
+
+![image-20230718211046005](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718211046005.png)
+
+控制字和状态字
+
+位置模式下的控制字通过bit4~bit6、 bit8进行控制：****
+
+![image-20230718211119761](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718211119761.png)
+
+- **状态字的Bit10、Bit12、Bit15显示驱动器状态**
+
+​                                                     ![image-20230718211228071](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718211228071.png)
+
+
+
+
+
+**（2）位置模式配置例程**
+
+![image-20230718211403925](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230718211403925.png)
+
+
+
+## 14.8 对程序的解读
+
+**（1）以这段代码为例：**
+
+![image-20230719091321703](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230719091321703.png)
+
+**这里发送的是SDO报文，0x23是命令字，说明是M->S发送4个字节的数据，data[0],data[1]是索引，6083h是指设置加速时间（地址 608300h），data[3]0x00h是子索引，命令字设置了数据是4字节，所以data[4]是数据，96h是指加速时间设置为150ms.**
+
+
+
+![image-20230719091304843](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230719091304843.png)
+
+
+
+**（2）解读这段代码**
+
+![image-20230719101427052](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230719101427052.png)
+
+这里可能会产生疑问？为什么控制板给驱动写入控制字映射和目标位置是使用RPDO呢？
+
+**我的理解：因为PDO属于过程数据，用来传输实时数据，即单向传输，无需接收节点回应CAN报文来确认，从通讯术语上来说是属于“生产消费”模型**
+
+**那么此时驱动属于生产者，而控制板属于消费者吧，所以需要使用接收过程数据对象RPDO**
+
+RPDO用于从其他节点接收数据，而TPDO用于向其他节点发送数据。这两种消息类型都包含一个数据对象以及一些控制和标识信息。
+
+RPDO（Receive Process Data Object）：
+
+- RPDO是用于接收（接收进程数据）的消息类型。
+- **RPDO的发送者是数据提供者（服务器），接收者是数据使用者（客户端）**。
+- 服务器可以配置 RPDO 的传输频率，使其以特定的时间间隔或在触发条件下发送数据。
+- **客户端通过配置和映射来指定希望接收的 RPDO。**
+
+TPDO（Transmit Process Data Object）：
+
+- TPDO是用于发送（传输进程数据）的消息类型。
+- TPDO的发送者是数据使用者（客户端），接收者是数据提供者（服务器）。
+- 客户端可以配置和映射 TPDO，以指定要发送的数据和传输频率。
+- 当客户端的数据更新时，TPDO将定期或在触发条件下发送数据给服务器。
+
+
+
+# 15.FreeRTOS工程
+
+参考资料：[(83条消息) STM32CubeMX学习笔记（28）——FreeRTOS实时操作系统使用（任务管理）_freertos oskernelstart_Leung_ManWah的博客-CSDN博客](https://leung-manwah.blog.csdn.net/article/details/122037092?spm=1001.2014.3001.5502)
+
+[(83条消息) CubeMX使用FreeRTOS编程指南_cube freertos_Top嵌入式的博客-CSDN博客](https://blog.csdn.net/qq_45396672/article/details/120877303?ops_request_misc=%7B%22request%5Fid%22%3A%22168975472116782425197389%22%2C%22scm%22%3A%2220140713.130102334..%22%7D&request_id=168975472116782425197389&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~all~top_positive~default-1-120877303-null-null.142^v90^control_2,239^v2^insert_chatgpt&utm_term=cubemx freertos&spm=1018.2226.3001.4187)
+
+注意：在设置freertos时，软件定时器需要使能
+
+![image-20230719203402876](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230719203402876.png)
+
+## 15.1 任务管理
+
+### 1.主要API
+
+ **1.osThreadId**
+
+任务ID。例如，对`osThreadCreate`的调用返回。可用作参数到`osThreadTerminate`以删除任务。
+
+```c++
+typedef TaskHandle_t osThreadId;
+```
+
+（任务句柄）
+
+```c++
+osThreadId LED0Handle;
+```
+
+
+
+**2.osThreadCreate(创建任务)**
+
+**使用动态/静态内存的方法创建一个任务。**
+
+![image-20230719211240257](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230719211240257.png)
+
+
+
+**3.osThreadTerminate（删除任务）**
+
+**删除任务。任务被删除后就不复存在，也不会再进入运行态。**
+
+![](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230719211334120.png)
+
+
+
+**4.osKernelStart（开启调度器）**
+
+​        在创建完任务的时候，我们需要开启调度器，因为创建仅仅是把任务添加到系统中，还没真正调度，并且空闲任务也没实现，定时器任务也没实现，这些都是在开启调度函数 osKernelStart() 中实现的。为什么要空闲任务？因为 FreeRTOS 一旦启动，就必须要保证系统中每时每刻都有一个任务处于运行态（Runing），并且空闲任务不可以被挂起与删除，空闲任务的优先级是最低的，以便系统中其他任务能随时抢占空闲任务的 CPU 使用权。 
+![image-20230719211545208](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230719211545208.png)
+
+
+
+### 2.任务的优先级
+
+**Tick**:FreeRTOS 中也有心跳，它使用定时器产生固定间隔的中断。这叫 Tick、滴答，
+
+![image-20230719212151272](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230719212151272.png)
+
+**优先级实验**
+
+```c++
+ /* definition and creation of LED0 */
+  osThreadDef(LED0, LED0_Task, osPriorityIdle, 0, 128);
+  LED0Handle = osThreadCreate(osThread(LED0), NULL);
+
+  /* definition and creation of LED1 */
+  osThreadDef(LED1, LED1_Task, osPriorityLow, 0, 128);
+  LED1Handle = osThreadCreate(osThread(LED1), NULL);
+```
+
+```c++
+void LED0_Task(void const * argument)
+{
+  /* USER CODE BEGIN LED0_Task */
+  /* Infinite loop */
+       while (1)
+  {
+      ToggLED0();
+      printf("大只0测试\n");
+     
+  }
+  /* USER CODE END LED0_Task */
+}
+void LED1_Task(void const * argument)
+{
+  /* USER CODE BEGIN LED1_Task */
+  /* Infinite loop */
+    while (1)
+  {
+     ToggLED1();
+     printf("大只1测试\n");
+    // osDelay(1000);
+  }
+  /* USER CODE END LED1_Task */
+}
+```
+
+实验结果：可以发现优先级高的LED1_Task一直在执行
+
+<img src="https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230719212651532.png" alt="image-20230719212651532" style="zoom:50%;" />
+
+
+
+### 3.任务状态
+
+**非运行状态：**
+
+-  **阻塞状态(Blocked)**
+-  **暂停状态(Suspended)**
+-  **就绪状态(Ready)**
+
+​	
+
+状态转换图：
+
+<img src="https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230719213345102.png" alt="image-20230719213345102" style="zoom:50%;" />
+
+**相关API：**
+
+​     **1. osThreadSuspend**（任务挂起）
+
+**挂起指定任务。被挂起的任务绝不会得到 CPU 的使用权，不管该任务具有什么优先级。**
+
+![image-20230719213555944](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230719213555944.png)
+
+**2.osThreadSuspendAll**
+
+**将所有的任务都挂起。**
+
+![image-20230719213848162](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230719213848162.png)
+
+3.**osThreadResume（任务就绪）**
+
+**让挂起的任务重新进入就绪状态，恢复的任务会保留挂起前的状态信息，在恢复的时候根据挂起时的状态继续运行。如果被恢复任务在所有就绪态任务中，处于最高优先级列表的第一位，那么系统将进行任务上下文的切换。可用在中断服务程序中。**
+
+![image-20230719213733030](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230719213733030.png)
+
+**4.osThreadResumeAll**
+
+**将所有的任务都恢复。**
+
+![image-20230719213929220](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230719213929220.png)
+
+
+
+### 4.空闲任务及其钩子函数
+
+**空闲任务的功能：**
+
+**1.释放被删除的任务的内存。**（如果使用 vTaskDelete()来删除任务，那么你就要确保空闲任务有机会执行，否则就无法释放被删除任务的内存。）
+
+**2.一个良好的程序，它的任务都是事件驱动的：平时大部分时间处于阻塞状态。有可能我们自己创建的所有任务都无法执行，但是调度器必须能找到一个可以运行的任务：所以，我们要提供空闲任务。**
+
+**特点：**
+
+- **空闲任务优先级为 0：它不能阻碍用户任务运行.**
+- **空闲任务要么处于就绪态，要么处于运行态，永远不会阻塞.**
+
+
+
+**钩子函数：**
+
+**作用：**
+
+- **执行一些低优先级的、后台的、需要连续执行的函数**
+- **测量系统的空闲时间：空闲任务能被执行就意味着所有的高优先级任务都停止了，所以测量空闲任务占据的时间，就可以算出处理器占用率。**
+- **让系统进入省电模式：空闲任务能被执行就意味着没有重要的事情要做，当然可以进入省电模式了。**
+
+空闲任务钩子函数主要目的就是调用 WFI 指令使 STM32F103 进入睡眠模式，在进入和退出低功耗模式的时候也可以做一些其他处理，比如关闭外设时钟等等，用法和Tickless 模式类似。
+
+
+
+**使用钩子函数的前提：**
+
+在 FreeRTOS\Source\tasks.c 中，可以看到如下代码，所以前提就是：
+
+- **把这个宏定义为 1：configUSE_IDLE_HOOK**
+- **实现 vApplicationIdleHook 函数**
+
+![image-20230720104431767](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230720104431767.png)
+
+实验：在freertos.c添加钩子函数
+
+![image-20230720110945704](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230720110945704.png)
+
+结果：led灯点亮
+
+
+
+<img src="C:/Users/su/AppData/Roaming/Typora/typora-user-images/image-20230720111009021.png" alt="image-20230720111009021" style="zoom:50%;" />
+
+
+
+### 5.调度算法
+
+**1.配置调度算法**
+
+通过配置文件FreeRTOSConfifig.h的两个配置项来配置调度算法：confifigUSE_PREEMPTION、confifigUSE_TIME_SLICING。
+
+列表如下：
+
+![image-20230720111625683](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230720111625683.png)
+
+- **A：可抢占+时间片轮转+空闲任务让步**
+- **B：可抢占+时间片轮转+空闲任务不让步**
+- **C：可抢占+非时间片轮转+空闲任务让步**
+- **D：可抢占+非时间片轮转+空闲任务不让步**
+- **E：合作调度**
+
+
+
+
+
+## 15.2 同步互斥与通信
+
+涉及概念：任务通知(task notifification)、队列(queue)、事件组(event group)、信号量(semaphoe)、互斥量(mutex)等。
+
+同一时间只能有一个人使用的资源，被称为**临界资源**。
+
+我们使用了“休眠-唤醒”的同步机制实现了“临界资源”的“互斥访问”。
+
+### 进程与进程之间的通信方式
+
+### 1.各类方法的对比
+
+<img src="https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230720112252738.png" alt="image-20230720112252738" style="zoom: 80%;" />
+
+
+
+## 15.3 队列
+
+参考资料：[(83条消息) STM32CubeMX学习笔记（29）——FreeRTOS实时操作系统使用（消息队列）_cubemx freertos 消息队列_Leung_ManWah的博客-CSDN博客](https://leung-manwah.blog.csdn.net/article/details/122187066)
+
+### **1.队列的特性**
+
+- 队列可以包含若干个数据：队列中有若干项，这被称为"长度"(length)
+- 每个数据大小固定
+- 创建队列时就要指定长度、数据大小
+- 数据的操作采用先进先出的方法(FIFO，First In First Out)：写数据时放到尾部，读数据时从头部读
+- 也可以强制写队列头部：覆盖头部数据
+
+![image-20230720113730051](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230720113730051.png)
+
+详细操作：
+
+![image-20230720124114103](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230720124114103.png)
+
+### 2.传输数据的两种方法
+
+使用队列传输数据时有两种方法：
+
+- 拷贝：把数据、把变量的值复制进队列里
+- 引用：把数据、把变量的地址复制进队列里
+
+freertos使用拷贝值的方法：
+
+- 无需分配buffffer来保存数据，队列中有buffer
+- 局部变量可以马上再次使用
+- 发送任务、接收任务解耦：接收任务不需要知道这数据是谁的、也不需要发送任务来释放数据
+- 如果数据实在太大，你还是可以使用队列传输它的地址
+- 队列的空间有FreeRTOS内核分配，无需任务操心对于有内存保护功能的系统，如果队列使用引用方法，也就是使用地址，必须确保双方任务对这个
+
+​       地址都有访问权限。使用拷贝方法时，则无此限制：内核有足够的权限，把数据复制进队列、再把数据复制出队列。
+
+
+
+### 3.队列的阻塞访问
+
+任务读写队列时，如果读写不成功就进入阻塞状态；能读写了，就马上进入就绪态；
+
+同时也能设定阻塞时间，。如果队列有数据了，则该阻塞的任务会变为就绪态。如果一直都没有数据，则时间到之后它也会进入就绪态。
+
+**有多个任务在等待同一个队列的数据。当队列中有数据时，哪个任务会进入就绪态？**
+
+- **优先级最高**的任务
+- 如果大家的**优先级相同**，那**等待时间最久**的任务会进入就绪态
+
+
+
+### 4.队列函数(主要API)
+
+#### **1.osThreadDef**（定义线程的属性和配置）
+
+`osThreadDef`是ARM Cortex-M系列微控制器上使用的CMSIS-RTOS RTX中的宏定义，用于定义线程的属性和配置。
+
+```C++
+osThreadDef(thread_name, thread_func, priority, instances, stack_size);
+```
+
+- `thread_name`：线程的名称，作为唯一标识符。
+- `thread_func`：线程的入口函数，即线程创建后首先执行的函数。
+- `priority`：线程的优先级，决定了线程在调度时的执行顺序。
+- `instances`：线程实例的数量，指定可以同时创建多少个相同的线程。
+- `stack_size`：线程堆栈的大小，用于保存线程执行过程中的局部变量和中间结果。
+
+举例：
+
+```c++
+osThreadDef(Receive, ReceiveTask, osPriorityIdle, 0, 128);
+```
+
+
+
+#### **2.osMessageQDef（定义消息队列的大小、数据类型和名称）**
+
+在CMSIS-RTOS RTX中，osMessageQDef是一个宏，用于定义消息队列的属性。它提供了一种简化的方式来定义消息队列的大小、数据类型和名称。
+
+```c++
+osMessageQDef(queue_name, queue_size, data_type);
+```
+
+- `queue_name` 是您为消息队列指定的名称。
+- `queue_size` 是消息队列的容量，即最大可以容纳的消息数量。
+- `data_type` 是消息队列中消息的数据类型。
+
+举例：
+
+```
+osMessageQDef(TestQueue, 16, uint32_t);
+```
+
+
+
+#### **3.osMessageQId**
+
+**队列ID**。例如，对`osMessageCreate`的调用返回。可用作参数到`osMessageDelete`以删除队列。
+
+```c++
+typedef QueueHandle_t osMessageQId;
+```
+
+举例：
+
+```
+osMessageQId TestQueueHandle;
+```
+
+#### **4. osMessageCreate**
+
+**使用动态内存的方式创建一个新的队列**
+
+![image-20230721163653886](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230721163653886.png)
+
+举例：
+
+```c++
+  osMessageQDef(TestQueue, 16, uint32_t);
+  TestQueueHandle = osMessageCreate(osMessageQ(TestQueue), NULL);
+```
+
+
+
+#### **5.osMessageDelete**
+
+**队列删除函数是根据消息队列ID直接删除的，删除之后这个消息队列的所有信息都会被系统回收清空，而且不能再次使用这个消息队列了。**
+
+![image-20230721165554542](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230721165554542.png)
+
+举例：
+
+```
+osMessageDelete(TestQueueHandle);
+```
+
+
+
+**消息发送与接收**
+
+#### **6.osMessagePut(发送消息）**
+
+**用于向队列尾部发送一个队列消息。消息以拷贝的形式入队，而不是以引用的形式。可用在中断服务程序中。**
+
+![image-20230721165848692](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230721165848692.png)
+
+举例：
+
+```c++
+void SendTask(void const * argument)
+{
+  /* USER CODE BEGIN SendTask */
+    osEvent xReturn;
+    uint32_t send_data1 = 1;
+    uint8_t key;
+  /* Infinite loop */
+  for(;;)
+  {
+      key = key_scan(0); /* 得到键值 */
+      printf("key=%d\n",key);
+     if(key==2) 
+    { 
+        /* KEY1 被按下 */ 
+        printf("send_data1!\n"); 
+        xReturn.status = osMessagePut(TestQueueHandle, /* 消息队列的句柄 */ 
+                                      send_data1,      /* 发送的消息内容 */ 
+                                      0);              /* 等待时间 0 */ 
+        if(osOK != xReturn.status)  
+        {
+            printf("send fail!\n\n"); 
+        }
+    } 
+    osDelay(100);
+
+  }
+  /* USER CODE END SendTask */
+}
+```
+
+
+
+#### **6.osMessageGet（接收消息）**
+
+**用于从一个队列中接收消息并把消息从队列中删除。接收的消息是以拷贝的形式进行的，所以我们必须提供一个足够大空间的缓冲区。具体能够拷贝多少数据到缓冲区，这个在队列创建的时候已经设定。可用在中断服务程序中。**
+
+![image-20230721171639850](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230721171639850.png)
+
+```c++
+void ReceiveTask(void const * argument)
+{
+  /* USER CODE BEGIN ReceiveTask */
+    osEvent event;
+  /* Infinite loop */
+  for(;;)
+  {
+    event = osMessageGet(TestQueueHandle, /* 消息队列的句柄 */ 
+                          osWaitForever); /* 等待时间 一直等 */ 
+    if(osEventMessage == event.status) 
+    {
+        printf("receive data:%d\n\n", event.value.v); 
+    }
+    else 
+    {
+        printf("error: 0x%d\n", event.status); 
+    }
+
+  }
+  /* USER CODE END ReceiveTask */
+}
+```
+
+
+
+#### **7.osMessagePeek**
+
+**osMessagePeek() 也是从从队列中接收数据单元，不同的是并不从队列中删出接收到的单元。osMessagePeek() 从队列首接收到数据后，不会修改队列中的数据，也不会改变数据在队列中的存储序顺。可用在中断服务程序中。**
+
+![image-20230721172229314](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230721172229314.png)
+
+
+
+#### **8.osMessageWaiting**
+
+**用于查询队列中当前有效数据单元个数。**
+
+![image-20230722110813195](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230722110813195.png)
+
+```c++
+void StartDefaultTask(void const * argument)
+{
+    uint32_t nums;
+  /* USER CODE BEGIN StartDefaultTask */
+  /* Infinite loop */
+  for(;;)
+  {
+     nums=osMessageWaiting(TestQueueHandle);
+      printf("data numbers:%d\n\n", nums); 
+    osDelay(1);
+  }
+  /* USER CODE END StartDefaultTask */
+}
+```
+
+
+
+### 5.实验
+
+在创建工程时，记住要勾上Use MicroLIB
+
+![image-20230721151212394](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230721151212394.png)
+
+按下按键key1（不灵敏，因为按键没有使用到中断），可以看到发送消息任务有发送任务，接收消息任务有接收消息
+
+<img src="https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230721173148904.png" alt="image-20230721173148904" style="zoom:50%;" />
+
+
+
+
+
+## 15.4 信号量
+
+**参考资料：**[myBlogResource/freertos/FreeRTOS完全开发手册之上册_快速入门.pdf at main · su-ron/myBlogResource (github.com)](https://github.com/su-ron/myBlogResource/blob/main/freertos/FreeRTOS完全开发手册之上册_快速入门.pdf)
+
+传递状态，并不需要传递具体的信息，此时需要用到信号量，它更节省内存
+
+
+
+### 1.信号量的特性
+
+计数型信号量的典型场景是：
+
+- **计数：事件产生时"give"信号量，让计数值加1；处理事件时要先"take"信号量，就是获得信号量，让计数值减1。**
+- **资源管理：要想访问资源需要先"take"信号量，让计数值减1；用完资源后"give"信号量，让计数值加1。**
+
+
+
+二进制信号量跟计数型的唯一差别，就是计数值的最大值被限定为1。
+
+![image-20230722112411575](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230722112411575.png)
+
+
+
+**信号量与队列的对比：**
+
+![image-20230722112607206](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230722112607206.png)
+
+**两种信号量的对比：**
+
+信号量的计数值都有限制：限定了最大值。如果最大值被限定为1，那么它就是二进制信号量；如果最大值不是1，它就是计数型信号量。
+
+![image-20230722113023524](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230722113023524.png)
+
+
+
+
+
+### 2.信号量函数(相关API)
+
+#### 0.osSemaphoreId
+
+osSemaphoreId是一个数据类型，用于表示信号量的标识符或句柄。
+
+举例：
+
+```c++
+osSemaphoreId CountSemHandle;
+osSemaphoreId BinarySemHandle;
+```
+
+**osThreadDef**
+
+osThreadDef是一个宏，用于定义线程的属性。它提供了一种简化的方式来定义线程的名称、入口函数、优先级、堆栈大小和其他属性。
+
+```c++
+osThreadDef(thread_name, thread_function, priority, instances, stack_size);
+```
+
+- `thread_name` 是您为线程指定的名称。
+- `thread_function` 是线程的入口函数，即线程启动时要执行的函数。
+- `priority` 是线程的优先级，指定线程相对于其他线程的执行顺序。
+- `instances` 是线程实例的数量。对于CMSIS-RTOS RTX，通常将其设置为0。
+- `stack_size` 是堆栈的大小，即线程所需的内存空间。
+
+举例：
+
+```
+osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
+```
+
+
+
+#### 1.osSemaphoreCreate
+
+**用于创建一个二值信号量，并返回一个ID。**
+
+![image-20230722145621702](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230722145621702.png)
+
+举例：
+
+```c++
+osThreadId defaultTaskHandle;
+defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
+```
+
+
+
+#### 2.osSemaphoreDelete
+
+**用于删除一个信号量，包括二值信号量，计数信号量，互斥量和递归互斥量。如果有任务阻塞在该信号量上，那么不要删除该信号量。**
+
+![image-20230722145703238](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230722145703238.png)
+
+#### 3.osSemaphoreRelease
+
+**用于释放信号量的宏。释放的信号量对象必须是已经被创建的，可以用于二值信号量、计数信号量、互斥量的释放，但不能释放由函数 xSemaphoreCreateRecursiveMutex() 创建的递归互斥量。可用在中断服务程序中。**
+
+![image-20230722145747071](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230722145747071.png)
+
+
+
+举例：
+
+```c++
+void SendTask(void const * argument)
+{
+  /* USER CODE BEGIN SendTask */
+   osStatus xReturn;
+    uint8_t key;
+  /* Infinite loop */
+  for(;;)
+  {
+       key = key_scan(0); /* 得到键值 */
+    //  printf("key=%d\n",key);
+    if(key==2) 
+    { 
+        xReturn = osSemaphoreRelease(BinarySemHandle);//给出二值信号量 
+        if(osOK == xReturn)
+        {
+            printf("release!\r\n"); 
+        }
+        else 
+        {
+            printf("BinarySem release fail!\r\n"); 
+        }
+    } 
+    osDelay(100);
+  }
+  /* USER CODE END SendTask */
+}
+```
+
+
+
+#### **4.osSemaphoreWait**
+
+**用于获取信号量，不带中断保护。获取的信号量对象可以是二值信号量、计数信号量和互斥量，但是递归互斥量并不能使用这个 API 函数获取。可用在中断服务程序中。**
+
+![image-20230722145830804](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230722145830804.png)
+
+举例：
+
+```c++
+void ReceiveTask(void const * argument)
+{
+  /* USER CODE BEGIN ReceiveTask */
+      osStatus xReturn = osErrorValue;
+  /* Infinite loop */
+  for(;;)
+  {
+    xReturn = osSemaphoreWait(BinarySemHandle, /* 二值信号量句柄 */ 
+                               osWaitForever); /* 等待时间 */ 
+    if(osOK == xReturn) 
+    {
+       LED0(0);
+       HAL_Delay(1000);
+       printf("BinarySem get!\n\n");
+       LED0(1);
+    }
+  }
+  /* USER CODE END ReceiveTask */
+}
+```
+
+
+
+
+
+#### 3.二值信号量
+
+运作机制
+
+![image-20230722152728771](C:/Users/su/AppData/Roaming/Typora/typora-user-images/image-20230722152728771.png)
+
+创建信号量时，系统会为创建的信号量对象分配内存，并把可用信号量初始化为用户自定义的个数， 二值信号量的最大可用信号量个数为 1。
+
+
+
+#### 4.计数信号量
+
+运作机制
+
+![image-20230722153130637](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230722153130637.png)
+
+
+
+## 15.5 互斥量
+
+参考资料：[(96条消息) STM32CubeMX学习笔记（31）——FreeRTOS实时操作系统使用(互斥量)_osmutexcreate_Leung_ManWah的博客-CSDN博客](https://leung-manwah.blog.csdn.net/article/details/122230132)
+
+- 量：值为0、1
+- 互斥：用来实现互斥访问
+- 它的核心在于：谁上锁，就只能由谁开锁
+
+
+
+### 1.使用场合
+
+- 访问外设：例如多个任务进程访问串口
+- 读、修改、写操作导致的问题
+- 对于同一个变量，比如 int a ，如果有两个任务同时写它就有可能导致问题。
+- 对于变量的修改，C代码只有一条语句，比如： a=a+8; ，它的内部实现分为3步：读出原值、修改、写入。
+
+![image-20230727151749485](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230727151749485.png)
+
+我们想让任务A、B都执行add_a函数，a的最终结果是 1+8+8=17 。假设任务A运行完代码①，在执行代码②之前被任务B抢占了：现在任务A的R0等于1。
+
+任务B执行完add_a函数，a等于9。任务A继续运行，在代码②处R0仍然是被抢占前的数值1，执行完②③的代码，a等于9，这跟预期的17不符合。
+
+
+
+**临界资源**
+
+上述问题的解决方法是：任务A访问这些全局变量、函数代码时，独占它，就是上个锁。这些**全局变量、函数代码必须被独占地使用**，它们被称为**临界资源**。
+
+
+
+互斥量也被称为互斥锁，使用过程如下：
+
+- **互斥量初始值为1**
+- **任务A想访问临界资源，先获得并占有互斥量，然后开始访问**
+- **任务B也想访问临界资源，也要先获得互斥量：被别人占有了，于是阻塞**
+- **任务A使用完毕，释放互斥量；任务B被唤醒、得到并占有互斥量，然后开始访问临界资源**
+- **任务B使用完毕，释放互斥量**
+
+
+
+正常来说：在任务A占有互斥量的过程中，任务B、任务C等等，都无法释放互斥量。
+
+但是FreeRTOS未实现这点：任务A占有互斥量的情况下，任务B也可释放互斥量。
+
+
+
+**二值信号量与互斥量**
+
+​        如果想要用于实现同步（任务之间或者任务与中断之间），二值信号量或许是更好的选择，虽然互斥量也可以用于任务与任务、任务与中断的同步，但是**互斥量更多的是用于保护资源的互锁。**
+
+​      但是**二值信号量会导致的另一个潜在问题，那就是任务优先级翻转。**而 FreeRTOS 提供的互斥量可以通过**优先级继承算法**，可以降低优先级翻转问题产生的影响，所以，**用于临界资源的保护一般建议使用互斥量。**
+
+​      
+
+
+
+### 2.运作机制
+
+<img src="https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230727154033227.png" alt="image-20230727154033227" style="zoom: 67%;" />
+
+用互斥量处理不同任务对临界资源的同步访问时，任务想要获得互斥量才能进行资源访问，如果一旦有任务成功获得了互斥量，则互斥量立即变为闭锁状态，此时其他任务会因为获取不到互斥量而不能访问这个资源，任务会根据用户自定义的等待时间进行等待，直到互斥量被持有的任务释放后，其他任务才能获取互斥量从而得以访问该临界资源，此时互斥量再次上锁，如此一来就可以确保每个时刻只有一个任务正在访问这个临界资源，保证了临界资源操作的安全性。
+
+
+**互斥量与递归互斥量**
+
+- 互斥量更适合于可能会引起优先级翻转的情况。
+- 递归互斥量更适用于任务可能会多次获取互斥量的情况下。这样可以避免同一任务多次递归持有而造成死锁的问题。
+
+
+
+### 3.相关API
+
+**1.osMutexId MuxSemHandle;**//`MuxSemHandle`可以理解为一个变量名，用于表示一个互斥锁的句柄（handle）或引用
+
+**2.osMutexDef(MuxSem);**定义了一个名为`MuxSem`的互斥锁对象
+
+
+
+**3.osMutexCreate**
+
+**用于创建一个互斥量，并返回一个互斥量ID。**
+
+![image-20230727192608297](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230727192608297.png)
+
+举例：
+
+```c++
+  osMutexDef(MuxSem);//定义了一个名为MuxSem的互斥锁对象
+  MuxSemHandle = osMutexCreate(osMutex(MuxSem));
+```
+
+
+
+**4.osRecursiveMutexCreate**
+
+用于创建一个递归互斥量，不是递归的互斥量由函数 osMutexCreate() 创建，且只能被同一个任务获取一次，如果同一个任务想再次获取则会失败。递归信号量则相反，它可以被同一个任务获取很多次，获取多少次就需要释放多少次。递归信号量与互斥量一样，都实现了优先级继承机制，可以减少优先级反转的反生。
+![image-20230727192832165](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230727192832165.png)
+
+```
+ osRecursiveMutexId MuxSemHandle;  // 声明可重入互斥锁变量
+ osMutexDef(MuxSem);//定义了一个名为MuxSem的互斥锁对象
+  MuxSemHandle = osMutexCreate(osMutex(MuxSem));
+```
+
+
+
+**5.osMutexDelete**
+
+**用于删除一个互斥量。**
+
+![image-20230727193457783](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230727193457783.png)
+
+
+
+**6.osMutexWait**
+
+**用于获取互斥量，但是递归互斥量并不能使用这个 API 函数获取**
+
+![image-20230727193559177](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230727193559177.png)
+
+```c++
+osStatus xReturn;
+xReturn = osMutexWait(MuxSemHandle,     /* 互斥量句柄 */ 
+                      osWaitForever);   /* 等待时间 */
+```
+
+
+
+**7.osRecursiveMutexWait**
+
+用于获取递归互斥量的宏，与互斥量的获取函数一样，osMutexWait()也是一个宏定义，它最终使用现有的队列机制，实际执行的函数是 xQueueTakeMutexRecursive() 。 获取递归互斥量之前必须由 osRecursiveMutexCreate() 这个函数创建。要注意的是该函数不能用于获取由函数 osMutexCreate() 创建的互斥量。
+![image-20230727194038630](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230727194038630.png)
+
+
+
+**8.osMutexRelease**
+
+**用于释放互斥量，但不能释放由函数 osRecursiveMutexCreate() 创建的递归互斥量。**
+
+![image-20230727194305961](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230727194305961.png)
+
+举例：
+
+```c++
+osStatus xReturn;
+xReturn = osMutexRelease(MuxSemHandle);//给出互斥量 
+```
+
+
+
+**9.osRecursiveMutexRelease**
+
+用于释放一个递归互斥量。已经获取递归互斥量的任务可以重复获取该递归互斥量。使用 osRecursiveMutexWait() 函数成功获取几次递归互斥量，就要使用 osRecursiveMutexRelease() 函数返还几次，在此之前递归互斥量都处于无效状态，别的任务就无法获取该递归互斥量。使用该函数接口时，只有已持有互斥量所有权的任务才能释放它，每释放一该递归互斥量，它的计数值就减 1。当该互斥量的计数值为 0 时（即持有任务已经释放所有的持有操作），互斥量则变为开锁状态，等待在该互斥量上的任务将被唤醒。如果任务的优先级被互斥量的优先级翻转机制临时提升，那么当互斥量被释放后，任务的优先级将恢复为原本设定的优先级。
+![image-20230727194522793](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230727194522793.png)
+
+
+
+### 4.实验
+
+实验在 15.4freertos_mutexes中
+
+关键代码
+
+```c++
+/* USER CODE END Header_LowPriorityTask */
+void LowPriorityTask(void const * argument)
+{
+  /* USER CODE BEGIN LowPriorityTask */
+     static uint32_t i; 
+     osStatus xReturn;
+  /* Infinite loop */
+  for(;;)
+  {
+    printf("LowPriority_Task Get Mutex\n");
+    //获取互斥量 MuxSem,没获取到则一直等待 
+    xReturn = osMutexWait(MuxSemHandle,     /* 互斥量句柄 */ 
+                          osWaitForever);   /* 等待时间 */
+    if(osOK == xReturn) 
+    {
+        printf("LowPriority_Task Runing\n\n"); 
+    }
+    
+    for(i = 0; i < 2000000; i++) 
+    { //模拟低优先级任务占用互斥量 
+        taskYIELD();//发起任务调度 
+    } 
+    
+    printf("LowPriority_Task Release Mutex\r\n"); 
+    xReturn = osMutexRelease(MuxSemHandle);//给出互斥量 
+    
+    osDelay(1000);
+  }
+  /* USER CODE END LowPriorityTask */
+}
+
+/* USER CODE BEGIN Header_MidPriorityTask */
+/**
+* @brief Function implementing the MidPriority thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_MidPriorityTask */
+void MidPriorityTask(void const * argument)
+{
+  /* USER CODE BEGIN MidPriorityTask */
+  /* Infinite loop */
+  for(;;)
+  {
+      printf("MidPriority_Task Runing\n"); 
+      osDelay(1000);
+  }
+  /* USER CODE END MidPriorityTask */
+}
+
+/* USER CODE BEGIN Header_HighPriorityTask */
+/**
+* @brief Function implementing the HighPriority thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_HighPriorityTask */
+void HighPriorityTask(void const * argument)
+{
+  /* USER CODE BEGIN HighPriorityTask */
+    osStatus xReturn;
+  /* Infinite loop */
+  for(;;)
+  {
+     printf("HighPriority_Task Get Mutex\n"); 
+    //获取互斥量 MuxSem,没获取到则一直等待 
+    xReturn = osMutexWait(MuxSemHandle,     /* 互斥量句柄 */ 
+                          osWaitForever);   /* 等待时间 */
+    if(osOK == xReturn) 
+    {
+        printf("HighPriority_Task Runing\n"); 
+    }
+  
+    printf("HighPriority_Task Release Mutex\r\n"); 
+    xReturn = osMutexRelease(MuxSemHandle);//给出互斥量
+
+    osDelay(1000);
+
+  }
+  /* USER CODE END HighPriorityTask */
+}
+```
+
+结果：
+
+![image-20230727194826723](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230727194826723.png)
+
+
+
+**5.谁上锁就由谁解锁**
+
+CMsis_v1实现了互斥锁的功能
+
+本节代码：15.freertos_mutex_who_give
+
+
+
+实现结果
+
+![image-20230727203212410](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230727203212410.png)
+
+
+
+**6.优先级反转**
+
+假设任务A、B都想使用串口，A优先级比较低：
+
+- 任务A获得了串口的互斥量
+
+- 任务B也想使用串口，它将会阻塞、等待A释放互斥量
+
+- 高优先级的任务，被低优先级的任务延迟，这被称为"优先级反转"(priority inversion）
+
+  
+
+  就是如果有三个任务在调度，分别是低优先级，中优先级和高优先级，如果低优先级和高优先级共用一个互斥锁，那么在低优先级调度时上锁了，，然后高优先级由于获取不到互斥锁一直阻塞，而中优先级一直运行，导致低优先级的任务释放不了锁，从而导致高优先级任务执行不了。
+
+  
+
+  
+
+<img src="https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230728110446481.png" alt="image-20230728110446481" style="zoom:50%;" />
+
+
+
+**7.优先级继承**
+
+优先级继承：
+
+- **假设持有互斥锁的是任务A，如果更高优先级的任务B也尝试获得这个锁**
+- **任务B说：你既然持有宝剑，又不给我，那就继承我的愿望吧**
+- **于是任务A就继承了任务B的优先级**
+- **这就叫：优先级继承**
+- **等任务A释放互斥锁时，它就恢复为原来的优先级**
+- **互斥锁内部就实现了优先级的提升、恢复**
+
+
+
+### 5.递归锁
+
+
+
+**1.死锁的概念**
+
+假设有2个互斥量M1、M2，2个任务A、B：
+
+- **A获得了互斥量M1**
+- **B获得了互斥量M2**
+- **A还要获得互斥量M2才能运行，结果A阻塞**
+- **B还要获得互斥量M1才能运行，结果B阻塞**
+- **A、B都阻塞，再无法释放它们持有的互斥量**
+- **死锁发生！**
+
+
+
+**2.自我死锁**
+
+假设这样的场景：
+
+- **任务A获得了互斥锁M**
+- **它调用一个库函数**
+- **库函数要去获取同一个互斥锁M，于是它阻塞：任务A休眠，等待任务A来释放互斥锁！**
+- **死锁发生！**
+
+
+
+**3.那么怎么去解决这类死锁问题？**
+
+使用递归锁，他的特性：
+
+- **任务A获得递归锁M后，它还可以多次去获得这个锁**
+- **"take"了N次，要"give"N次，这个锁才会被释放**
+
+
+
+## 15.6 事件组
+
+参考资料：[(97条消息) STM32CubeMX学习笔记（32）——FreeRTOS实时操作系统使用（事件）_Leung_ManWah的博客-CSDN博客](https://leung-manwah.blog.csdn.net/article/details/122249672)
+
+
+
+### 1. **事件组概念与操作**
+
+**1.1概念**
+
+事件组可以简单地认为就是一个整数：
+
+- **每一位表示一个事件**
+- **每一位事件的含义由程序员决定，比如：Bit0表示用来串口是否就绪，Bit1表示按键是否被按下**
+- **这些位，值为1表示事件发生了，值为0表示事件没发生**
+- **一个或多个任务、ISR都可以去写这些位；一个或多个任务、ISR都可以去读这些位**
+- **可以等待某一位、某些位中的任意一个，也可以等待多位**
+
+
+
+​         事件是一种实现任务间通信的机制，主要用于实现多任务间的同步，**但事件通信只能是事件类型的通信，无数据传输**。 与信号量不同的是，它可以实现一对多，多对多的同步。即**一个任务可以等待多个事件的发生**：可以是任意一个事件发生时唤醒任务进行事件处理；也可以是**几个事件都发生后才唤醒任务进行事件处理**。同样，也可以是多个任务同步多个事件。
+
+​       **每一位代表一个事件，任务通过“逻辑与”或“逻辑或”与一个或多个事件建立关联，形成一个事件组。** 事件的“逻辑或”也被称作是独立型同步，指的是任务感兴趣的所有事件任一件发生即可被唤醒；事件“逻辑与”则被称为是关联型同步，指的是任务感兴趣的若干事件都发生时才被唤醒，并且事件发生的时间可以不同步。
+
+![image-20230728145545069](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230728145545069.png)
+
+事件组用一个整数来表示，其中的高8位留给内核使用，只能用其他的位来表示事件。那么这个整数是多少位的？
+
+- 如果**confifigUSE_16_BIT_TICKS是1**，那么这个整数就是16位的，低8位用来表示事件
+- 如果**confifigUSE_16_BIT_TICKS是0**，那么这个整数就是32位的，低24位用来表示事件
+
+
+
+**1.2 事件组的操作**
+
+- **先创建事件组**
+- **任务C、D等待事件：**
+
+​           等待什么事件？可以等待某一位、某些位中的任意一个，也可以等待多位。简单地说就是"或"、"与"的关系。
+
+​           得到事件时，要不要清除？可选择清除、不清除。
+
+- **任务A、B产生事件：设置事件组里的某一位、某些位**
+
+
+
+在 FreeRTOS 事件中，每个事件获取的时候，用户可以选择感兴趣的事件，并且选择读取事件信息标记，它有三个属性，分别是**逻辑与，逻辑或以及是否清除标记。**当任务等待事件同步时，**可以通过任务感兴趣的事件位和事件信息标记来判断当前接收的事件是否满足要**求，如果满足则说明任务等待到对应的事件，系统将唤醒等待的任务；否则，任务会根据用户指定的阻塞超时时间继续等待下去。
+
+
+**1.3 运作机制**
+
+![image-20230728151840165](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230728151840165.png)
+
+<img src="https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230728152542336.png" alt="image-20230728152542336" style="zoom:50%;" />
+
+事件唤醒机制，当任务因为等待某个或者多个事件发生而进入阻塞态，当事件发生的时候会被唤醒。2
+
+
+
+### **2.  相关API**
+
+#### 1.osEventFlagsNew
+
+**用于创建一个事件组，并返回对应的ID。**
+
+![image-20230728163859895](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230728163859895.png)
+
+举例：
+
+```c++
+osEventFlagsId_t EventHandle;
+const osEventFlagsAttr_t Event_attributes = {
+  .name = "Event"
+};
+EventHandle = osEventFlagsNew(&Event_attributes);
+```
+
+
+
+#### **2.osEventFlagsDelete**
+
+**当系统不再使用事件对象时，可以通过删除事件对象控制块来释放系统资源。**
+
+![image-20230728164235466](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230728164235466.png)
+
+
+
+#### 3.osEventFlagsSet
+
+用于置位事件组中指定的位，当位被置位之后，阻塞在该位上的任务将会被解锁。使用该函数接口时，通过参数指定的事件标志来设定事件的标志位，然后遍历等待在事件对象上的事件等待列表，判断是否有任务的事件激活要求与当前事件对象标志值匹配，如果有，则唤醒该任务。简单来说，就是设置我们自己定义的事件标志位为 1，并且看看有没有任务在等待这个事件，有的话就唤醒它。该函数可以在中断中使用。 
+![image-20230728164339703](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230728164339703.png)
+
+ 举例：
+
+```c++
+#define KEY0_EVENT (0x01 << 0)//设置事件掩码的位 0 
+#define KEY1_EVENT (0x01 << 1)//设置事件掩码的位 1
+osEventFlagsSet(EventHandle, KEY0_EVENT); 
+osEventFlagsSet(EventHandle, KEY1_EVENT); 
+```
+
+
+
+#### 4.osEventFlagsWait
+
+**用于获取事件组中的一个或多个事件发生标志，当要读取的事件标志位没有被置位时任务将进入阻塞等待状态。**
+
+![image-20230728164623764](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230728164623764.png)
+
+举例：
+
+```c++
+void ReceiveTask(void *argument)
+{
+  /* USER CODE BEGIN ReceiveTask */
+    uint32_t r_event; /* 定义一个事件接收变量 */
+  /* Infinite loop */
+  for(;;)
+  {
+     r_event = osEventFlagsWait(EventHandle,             /* 事件对象句柄 */ 
+                              KEY1_EVENT|KEY0_EVENT,    /* 接收任务感兴趣的事件 */ 
+                              osFlagsWaitAll,           /* 退出时清除事件位，同时满足感兴趣的所有事件 */ 
+                              osWaitForever);           /* 指定超时事件,一直等 */ 
+  
+    if((r_event & (KEY1_EVENT|KEY0_EVENT)) == (KEY1_EVENT|KEY0_EVENT)) 
+    { 
+        /* 如果接收完成并且正确 */ 
+        printf ("KEY1 and KEY2 down\n"); 
+    } 
+    else 
+    {
+        printf ("Event Error！\n"); 
+    }
+
+  }
+  /* USER CODE END ReceiveTask */
+}
+```
+
+
+
+#### 5.osEventFlagsClear
+
+**用于清除事件组指定的位，如果在获取事件的时候没有将对应的标志位清除，那么就需要用这个函数来进行显式清除。该函数可以在中断中使用。**
+
+![image-20230728165152545](https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230728165152545.png)
+
+
+
+### 3.实验
+
+实验的具体代码在16.freertos_event文件夹中
+
+按按键1显示KEY1 down
+
+按按键2显示KEY2 down
+
+同时按下则是显示KEY1 and KEY2 down(等待多个事件)
+
+<img src="https://cdn.jsdelivr.net/gh/su-ron/myBlogResource/freertos/picture/image-20230728165435565.png" alt="image-20230728165435565" style="zoom: 67%;" />
+
+
+
